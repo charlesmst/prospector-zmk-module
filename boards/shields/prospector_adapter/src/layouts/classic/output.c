@@ -97,8 +97,16 @@ static void update_output_widget(struct zmk_widget_output *widget, uint8_t profi
     snprintf(profile_text, sizeof(profile_text), "%d", profile_index);
     lv_label_set_text(widget->profile_label, profile_text);
 
+#if IS_ENABLED(CONFIG_ZMK_BLE)
     bool is_connected = zmk_ble_profile_is_connected(profile_index);
     bool is_open = zmk_ble_profile_is_open(profile_index);
+#else
+    /* No BLE built: no profile can be connected or open, and the transport can
+     * never be ZMK_TRANSPORT_BLE. The endpoint path below still runs, so the
+     * widget keeps showing the active (USB) output. */
+    bool is_connected = false;
+    bool is_open = false;
+#endif
     bool is_ble_active = (active_transport == ZMK_TRANSPORT_BLE);
 
     lv_label_set_text(widget->links_label, SYMBOL_WAVES_UP);
@@ -169,6 +177,7 @@ static int endpoint_changed_listener(const zmk_event_t *eh) {
     return ZMK_EV_EVENT_BUBBLE;
 }
 
+#if IS_ENABLED(CONFIG_ZMK_BLE)
 static int ble_active_profile_changed_listener(const zmk_event_t *eh) {
     const struct zmk_ble_active_profile_changed *event = as_zmk_ble_active_profile_changed(eh);
     if (event) {
@@ -195,6 +204,7 @@ ZMK_SUBSCRIPTION(widget_output_endpoint, zmk_endpoint_changed);
 
 ZMK_LISTENER(widget_output_profile, ble_active_profile_changed_listener);
 ZMK_SUBSCRIPTION(widget_output_profile, zmk_ble_active_profile_changed);
+#endif // IS_ENABLED(CONFIG_ZMK_BLE)
 
 int zmk_widget_output_init(struct zmk_widget_output *widget, lv_obj_t *parent) {
     widget->container = lv_obj_create(parent);
@@ -217,7 +227,9 @@ int zmk_widget_output_init(struct zmk_widget_output *widget, lv_obj_t *parent) {
     lv_obj_align(widget->profile_label, LV_ALIGN_RIGHT_MID, 0, 1);
 
     if (sys_slist_is_empty(&widgets)) {
+#if IS_ENABLED(CONFIG_ZMK_BLE)
         active_profile_index = zmk_ble_active_profile_index();
+#endif
         struct zmk_endpoint_instance selected = zmk_endpoint_get_selected();
         active_transport = selected.transport;
 
