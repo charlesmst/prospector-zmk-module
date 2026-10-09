@@ -22,6 +22,15 @@ config PROSPECTOR_STATUS_SCREEN_OPERATOR
     help
         Technical and information dense layout
 
+config PROSPECTOR_STATUS_SCREEN_NONE
+    bool "None - application provides its own"
+    help
+        Build no status screen at all. The application is then responsible for
+        defining zmk_display_status_screen(); the panel, backlight, display
+        rotation and bundled fonts are still provided as usual. Pick this when
+        you want the Prospector hardware with a screen of your own, instead of
+        patching one of the layouts above.
+
 endchoice
 
 config PROSPECTOR_ROTATE_DISPLAY_180
