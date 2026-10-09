@@ -83,7 +83,40 @@ config PROSPECTOR_FIXED_BRIGHTNESS
     int "Fixed display brightness"
     default 50
     range 1 100
-    depends on !PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
+    help
+      Used when the ambient light sensor is disabled, and as the fallback when
+      it is enabled but not actually fitted -- the sensor is the optional part
+      of the BOM, so a board without one is a supported configuration. No
+      longer depends on the sensor being off, so enabling auto brightness
+      before the hardware is in place degrades cleanly instead of driving the
+      backlight from a reading that never arrives.
+
+if PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
+
+config PROSPECTOR_AMBIENT_LUX_FULL
+    int "Ambient reading mapped to full brightness"
+    default 400
+    help
+      Readings at or above this drive the backlight to its ceiling; the curve
+      is linear from zero up to here. Was hard-coded at 100, which is dimmer
+      than an ordinary lit room -- so the backlight clamped to maximum unless
+      the room was nearly dark, which defeats the point. Several hundred suits
+      a desk; lower it if the display is brighter than you want indoors.
+
+config PROSPECTOR_BRIGHTNESS_MIN
+    int "Backlight floor in darkness"
+    default 5
+    range 1 100
+    help
+      Where the backlight lands with no ambient light at all. 1 is nearly
+      invisible; raise it if the screen disappears in a dark room.
+
+config PROSPECTOR_BRIGHTNESS_MAX
+    int "Backlight ceiling in bright light"
+    default 100
+    range 1 100
+
+endif # PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
 
 config PROSPECTOR_LAYER_NAME_UPPERCASE
     bool "Display layer names in uppercase"

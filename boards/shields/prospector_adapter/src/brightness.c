@@ -11,14 +11,26 @@ LOG_MODULE_REGISTER(als, 4);
 static const struct device *pwm_leds_dev = DEVICE_DT_GET_ONE(pwm_leds);
 #define DISP_BL DT_NODE_CHILD_IDX(DT_NODELABEL(disp_bl))
 
+static void set_fixed_brightness(void) {
+    if (led_set_brightness(pwm_leds_dev, DISP_BL, CONFIG_PROSPECTOR_FIXED_BRIGHTNESS)) {
+        LOG_ERR("Failed to set fixed brightness");
+    }
+}
+
 #ifdef CONFIG_PROSPECTOR_USE_AMBIENT_LIGHT_SENSOR
 
 static uint8_t current_brightness = 100;
 
-#define SENSOR_MIN      0       // Minimum sensor reading
-#define SENSOR_MAX      100   // Maximum sensor reading
-#define PWM_MIN         1       // Minimum PWM duty cycle (%) - keep display visible
-#define PWM_MAX         100     // Maximum PWM duty cycle (%)
+#define SENSOR_MIN 0
+/*
+ * Tunable, because the old hard-coded ceiling of 100 was far too low. An
+ * ordinary lit room reads several hundred lux, so every reading clamped to the
+ * maximum and the backlight sat at full brightness unless the room was nearly
+ * dark -- the opposite of what auto-brightness is for.
+ */
+#define SENSOR_MAX CONFIG_PROSPECTOR_AMBIENT_LUX_FULL
+#define PWM_MIN    CONFIG_PROSPECTOR_BRIGHTNESS_MIN
+#define PWM_MAX    CONFIG_PROSPECTOR_BRIGHTNESS_MAX
 
 #define FADE_STEP                        1
 #define FADE_SLEEP_BRIGHTEN_MS           3
@@ -82,30 +94,34 @@ extern void als_thread(void *d0, void *d1, void *d2) {
     ARG_UNUSED(d2);
 
     const struct device *dev;
-    struct sensor_value intensity;
+    /* Zero-initialised: sensor_channel_get() leaves this untouched when it
+     * fails, and the old code mapped brightness from whatever was on the
+     * stack. */
+    struct sensor_value intensity = {0};
     uint8_t mapped_brightness;
 
     dev = DEVICE_DT_GET_ONE(avago_apds9960);
     if (!device_is_ready(dev)) {
-        printk("sensor: device not ready.\n");
+        /* The sensor is the optional part of the BOM, so a board built without
+         * it is a supported configuration, not an error. Fall back to the fixed
+         * brightness and stop -- the old code logged this and then ran the loop
+         * anyway, polling a device that was not there forever and driving the
+         * backlight from uninitialised memory. */
+        LOG_WRN("ambient light sensor not present, using fixed brightness");
+        set_fixed_brightness();
+        return;
     }
-
-    // led_set_brightness(pwm_leds_dev, DISP_BL, 100);
 
     while (1) {
 
         k_msleep(NORMAL_SAMPLE_SLEEP_MS);
 
-
-        if (sensor_sample_fetch(dev)) {
-            LOG_ERR("sensor_sample fetch failed\n");
+        /* Skip the cycle on a read failure rather than acting on a stale or
+         * absent value. */
+        if (sensor_sample_fetch(dev) || sensor_channel_get(dev, SENSOR_CHAN_LIGHT, &intensity)) {
+            LOG_ERR("ambient light read failed");
+            continue;
         }
-
-        if (sensor_channel_get(dev, SENSOR_CHAN_LIGHT, &intensity)) {
-            LOG_ERR("Cannot read ALS data.\n");
-        }
-
-        // LOG_INF("ambient light intensity %d", intensity.val1);
 
         mapped_brightness = map_light_to_pwm(intensity.val1);
         // LOG_INF("NORMAL: mapped PWM duty cycle %d\n", mapped_brightness);
@@ -116,11 +132,10 @@ extern void als_thread(void *d0, void *d1, void *d2) {
             for (int i = 0; i < BURST_SAMPLE_TIMEOUT; i++) {
                 k_msleep(BURST_SAMPLE_SLEEP_MS);
 
-                if (sensor_sample_fetch(dev)) {
-                    LOG_ERR("sensor_sample fetch failed\n");
-                }
-                if (sensor_channel_get(dev, SENSOR_CHAN_LIGHT, &intensity)) {
-                    LOG_ERR("Cannot read ALS data.\n");
+                if (sensor_sample_fetch(dev) ||
+                    sensor_channel_get(dev, SENSOR_CHAN_LIGHT, &intensity)) {
+                    LOG_ERR("ambient light read failed");
+                    continue;
                 }
 
                 mapped_brightness = map_light_to_pwm(intensity.val1);
@@ -148,7 +163,7 @@ K_THREAD_DEFINE(als_tid, 1024, als_thread, NULL, NULL, NULL, K_LOWEST_APPLICATIO
 #else
 
 static int init_fixed_brightness(void) {
-    led_set_brightness(pwm_leds_dev, DISP_BL, CONFIG_PROSPECTOR_FIXED_BRIGHTNESS);
+    set_fixed_brightness();
 
     return 0;
 }
