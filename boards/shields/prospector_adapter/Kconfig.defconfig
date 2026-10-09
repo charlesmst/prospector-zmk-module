@@ -1,7 +1,19 @@
 if SHIELD_PROSPECTOR_ADAPTER
 
+# Only meaningful on a BLE split central, and actively harmful otherwise.
+#
+# ZMK declares this inside `if ZMK_SPLIT && ZMK_SPLIT_BLE`, so on a central
+# using another split transport the symbol does not exist. Defaulting it
+# unconditionally here brings it into existence and turns it on, and because
+# ZMK's prompt-bearing definition is inactive the symbol is promptless --
+# a .conf cannot override it, only a default can.
+#
+# zmk-feature-split-esb gates its own battery reconcile on
+# !ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING, so an unconditional y here
+# silently stops peripheral battery from ever reaching the display on an ESB
+# central, with no way for the user to switch it back off.
 config ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING
-    default y
+    default y if ZMK_SPLIT_BLE
 
 config ZMK_DISPLAY
    default y
